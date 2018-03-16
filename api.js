@@ -63,7 +63,6 @@ function indexRoute(req, res) {
 async function testsRoute(req, res, next) {
   const timer = timerStart();
   const { slug } = req.params;
-
   let tests;
 
   try {
