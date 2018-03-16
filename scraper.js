@@ -15,6 +15,7 @@ const client = redis.createClient(redisOptions);
 
 const asyncGet = util.promisify(client.get).bind(client);
 const asyncSet = util.promisify(client.set).bind(client);
+const asyncFlush = util.promisify(client.flushall).bind(client);
 
 /**
  * Listi af sviðum með „slug“ fyrir vefþjónustu og viðbættum upplýsingum til
@@ -96,7 +97,6 @@ async function get(url, cacheKey) {
 async function scrape(id, slug) {
   const text = await get(`https://ugla.hi.is/Proftafla/View/ajax.php?sid=2027&a=getProfSvids&proftaflaID=37&svidID=${id}&notaVinnuToflu=0`, slug);
   const tests = await getData(text);
-  // client.quit();
   return tests;
 }
 
@@ -128,11 +128,7 @@ async function getTests(slug) {
  * @returns {Promise} Promise sem mun innihalda boolean um hvort cache hafi verið hreinsað eða ekki.
  */
 async function clearCache() {
-  let success;
-  client.flushdb((err, succeeded) => {
-    success = succeeded;
-  });
-  return success;
+  return await asyncFlush();
 }
 
 /**
