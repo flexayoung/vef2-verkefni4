@@ -56,7 +56,7 @@ async function getData(text) {
   const tests = [];
 
   headings.each((i, el) => {
-     tests.push({ heading : $(el).text().trim() });
+    tests.push({ heading: $(el).text().trim() });
   });
   tables.each((i) => {
     const rows = $('tbody').eq(i).find('tr');
@@ -66,26 +66,17 @@ async function getData(text) {
       const name = $(el).find('td').eq(1).text();
       const type = $(el).find('td').eq(2).text();
       const students = $(el).find('td').eq(3).text();
-      const data = $(el).find('td').eq(4).text();
-      temp.push({course, name, type, students: Number(students), data});
-    })
-    tests[i]['tests'] = temp;
-  })
-  return tests;
-}
-
-async function scrapeAll() {
-  for (let i = 0; i < departments.length; i += 1) {
-    if (!departments[i].tests) {
-      departments[i].tests = scrape(departments[i].id, departments[i].slug);
-    }
-  }
-}
-
-async function scrape(id, slug) {
-  const text = await get(`https://ugla.hi.is/Proftafla/View/ajax.php?sid=2027&a=getProfSvids&proftaflaID=37&svidID=${id}&notaVinnuToflu=0`, slug);
-  const tests = await getData(text);
-  client.quit();
+      const date = $(el).find('td').eq(4).text();
+      temp.push({
+        course,
+        name,
+        type,
+        students: Number(students),
+        date,
+      });
+    });
+    tests[i].tests = temp;
+  });
   return tests;
 }
 
@@ -97,22 +88,27 @@ async function get(url, cacheKey) {
 
   const response = await fetch(url);
   const text = await response.text();
-  await asyncSet(cacheKey, text, 'EX', cacheTl);
+  await asyncSet(`ugla:${cacheKey}`, text, 'EX', cacheTl);
   return text;
+}
+
+
+async function scrape(id, slug) {
+  const text = await get(`https://ugla.hi.is/Proftafla/View/ajax.php?sid=2027&a=getProfSvids&proftaflaID=37&svidID=${id}&notaVinnuToflu=0`, slug);
+  const tests = await getData(text);
+  // client.quit();
+  return tests;
 }
 
 async function getIdFromSlug(slug) {
   let num;
-  departments.forEach(i => {
+  departments.forEach((i) => {
     if (i.slug === slug) {
       num = i.id;
     }
-  })
+  });
   return num;
 }
-
-
-
 
 /**
  * Sækir svið eftir `slug`. Fáum gögn annaðhvort beint frá vef eða úr cache.
@@ -132,7 +128,11 @@ async function getTests(slug) {
  * @returns {Promise} Promise sem mun innihalda boolean um hvort cache hafi verið hreinsað eða ekki.
  */
 async function clearCache() {
-  /* todo */
+  let success;
+  client.flushdb((err, succeeded) => {
+    success = succeeded;
+  });
+  return success;
 }
 
 /**
@@ -141,14 +141,37 @@ async function clearCache() {
  * @returns {Promise} Promise sem mun innihalda object með tölfræði um próf
  */
 async function getStats() {
-  await scrapeAll();
- //console.log(departments);
- departments.forEach(i => {
+  const data = [];
+  await Promise.all(departments.map(async (i) => {
+    const contents = await scrape(i.id, i.slug);
+    data.push(contents);
+  }));
 
- });
-  // for(let i = 0; i < departments.length; i+=1 )
-  // const min = await getMinStudents();
 
+  let noOfExams = 0;
+  let noOfStudents = 0;
+  let minStudents = Number.MAX_SAFE_INTEGER;
+  let maxStudents = Number.MIN_SAFE_INTEGER;
+
+  await Promise.all(data.map(async (i) => {
+    i.forEach((j) => {
+      noOfExams += j.tests.length;
+      j.tests.forEach((k) => {
+        if (k.students < minStudents) minStudents = k.students;
+        else if (k.students > maxStudents) maxStudents = k.students;
+        noOfStudents += k.students;
+      });
+    });
+  }));
+  const avgStudent = noOfStudents / noOfExams;
+
+  return {
+    min: minStudents,
+    max: maxStudents,
+    numTests: noOfExams,
+    numStudents: noOfStudents,
+    averageStudents: avgStudent,
+  };
 }
 
 module.exports = {
